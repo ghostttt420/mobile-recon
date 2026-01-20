@@ -38,3 +38,14 @@ jobs:
         with:
           name: ${{ inputs.domain }}-screenshots
           path: ./screenshots/
+      - name: Zip Screenshots
+        run: zip -r screenshots.zip ./screenshots/
+
+      - name: Send to Telegram
+        uses: xz-dev/TelegramFileUploader@v1
+        with:
+          to-who: ${{ secrets.TELEGRAM_CHAT_ID }}
+          files: screenshots.zip
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
