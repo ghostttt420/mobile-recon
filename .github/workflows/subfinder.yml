@@ -1,46 +1,40 @@
-name: Live Subdomain Hunter
+name: Visual Subdomain Hunter
 
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Target Domain (e.g., tesla.com)'
+        description: 'Target'
         required: true
-        default: 'example.com'
+        default: 'tesla.com'
 
 jobs:
   hunt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      # Install BOTH tools
       - name: Install Tools
         run: |
           go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
           go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/sensepost/gowitness@latest
 
-      # Run the Pipeline: Subfinder -> Httpx
-      # We use -silent so only the clean data passes through
-      # -title shows the website title
-      # -sc shows the status code (200 OK, 403 Forbidden, etc.)
-      - name: Run Hunt & Check Live
+      - name: Map and Screenshot
         run: |
-          echo "Hunting live sites on ${{ inputs.domain }}..."
-          subfinder -d ${{ inputs.domain }} -silent | httpx -title -status-code -o live_results.txt
+          # 1. Find subdomains
+          # 2. Filter for live ones
+          # 3. Take screenshots of the hits
+          subfinder -d ${{ inputs.domain }} -silent > subs.txt
+          cat subs.txt | httpx -silent -mc 200,401,404 > live.txt
+          gowitness scan file -f live.txt --write-db
           
-      # Display the clean results in your logs
-      - name: 👀 VIEW LIVE SITES HERE
-        run: cat live_results.txt
-
-      # Save the file for download
-      - name: Upload Artifact
+      - name: Upload Screenshots
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.domain }}-live-sites
-          path: live_results.txt
+          name: ${{ inputs.domain }}-screenshots
+          path: ./screenshots/
