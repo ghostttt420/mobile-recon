@@ -25,14 +25,28 @@ jobs:
           go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
           go install -v github.com/sensepost/gowitness@latest
 
-      - name: Map and Screenshot
+      - name: Map, Screenshot & Count
         run: |
-          # Create folder first to avoid zip errors later
+          # 1. Create directory
           mkdir -p screenshots
+          
+          # 2. Find Subdomains
           subfinder -d ${{ inputs.domain }} -silent > subs.txt
+          
+          # 3. Check Live Hosts
           cat subs.txt | httpx -silent -mc 200,401,404 > live.txt
-          # Using live.txt for gowitness
-          gowitness scan file -f live.txt --write-db
+          
+          # 4. Count them and save to ENV variable for the Telegram message
+          # We use "|| echo 0" just in case the file is empty
+          count=$(wc -l < live.txt || echo 0)
+          echo "LIVE_COUNT=$count" >> $GITHUB_ENV
+          
+          # 5. Run Gowitness only if we have targets
+          if [ -s live.txt ]; then
+            gowitness scan file -f live.txt --write-db --screenshot-path ./screenshots/
+          else
+            echo "No live targets found, skipping screenshots."
+          fi
 
       - name: Upload Screenshots Artifact
         uses: actions/upload-artifact@v4
@@ -41,6 +55,7 @@ jobs:
           path: ./screenshots/
 
       - name: Zip Screenshots
+        # Zip the folder and the text list
         run: zip -r screenshots.zip ./screenshots/ live.txt
 
       - name: Send to Telegram
@@ -49,9 +64,10 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           document: screenshots.zip
+          # Notice we use ${{ env.LIVE_COUNT }} now
           message: |
             ✅ *Scan Complete!*
             *Target:* ${{ inputs.domain }}
-            *Status:* Found $(wc -l < live.txt) live subdomains.
+            *Status:* Found ${{ env.LIVE_COUNT }} live subdomains.
             _Attached: Screenshots and live site list._
           format: markdown
