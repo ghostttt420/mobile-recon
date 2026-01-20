@@ -38,14 +38,20 @@ jobs:
         with:
           name: ${{ inputs.domain }}-screenshots
           path: ./screenshots/
-      - name: Zip Screenshots
+            - name: Zip Screenshots
         run: zip -r screenshots.zip ./screenshots/
 
       - name: Send to Telegram
-        uses: xz-dev/TelegramFileUploader@v1
+        uses: appleboy/telegram-action@master
         with:
-          to-who: ${{ secrets.TELEGRAM_CHAT_ID }}
-          files: screenshots.zip
-        env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          document: screenshots.zip
+          message: |
+            ✅ *Scan Complete!*
+            *Target:* ${{ inputs.domain }}
+            *Status:* Found $(wc -l < live_results.txt) live subdomains.
+            _Attached: Screenshots and logs._
+          format: markdown
+
 
