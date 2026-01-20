@@ -19,7 +19,10 @@ jobs:
         with:
           go-version: '1.21'
 
-      # 1. Install ALL the Tools
+      # 🛠️ FIX IS HERE: Install the missing library for Naabu
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
+
       - name: Install Arsenal
         run: |
           go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
@@ -28,7 +31,6 @@ jobs:
           go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
           go install -v github.com/sensepost/gowitness@latest
 
-      # 2. Run the "Kill Chain"
       - name: Run Recon Chain
         run: |
           mkdir -p screenshots
@@ -37,20 +39,31 @@ jobs:
           echo "🔍 Finding Subdomains..."
           subfinder -d ${{ inputs.domain }} -silent > subs.txt
           
-          # B. Port Scan (Find weird ports like 8080, 8443)
+          # B. Port Scan (Now works thanks to libpcap!)
           echo "🚪 Scanning Ports..."
-          naabu -list subs.txt -top-ports 100 -silent > open_ports.txt
+          # We use -c 50 to not overload the GitHub runner
+          naabu -list subs.txt -top-ports 100 -c 50 -silent > open_ports.txt
           
           # C. Check for Live Web Servers
           echo "📶 Checking Live Sites..."
-          cat open_ports.txt | httpx -silent -title -tech-detect -status-code > live_full.txt
+          # If naabu found nothing, we fallback to the subdomains list to avoid crash
+          if [ -s open_ports.txt ]; then
+            cat open_ports.txt | httpx -silent -title -tech-detect -status-code > live_full.txt
+          else
+            cat subs.txt | httpx -silent -title -tech-detect -status-code > live_full.txt
+          fi
+          
           # Clean list for tools that just need URLs
           cat live_full.txt | awk '{print $1}' > urls.txt
 
-          # D. Vulnerability Scan (The Attack Step)
+          # D. Vulnerability Scan
           echo "☢️ Running Nuclei Vulnerability Scan..."
-          # We scan for 'critical' and 'high' severity bugs only to keep it fast
-          nuclei -l urls.txt -severity critical,high -silent -o vulns.txt
+          # Scanning for Critical and High bugs
+          if [ -s urls.txt ]; then
+             nuclei -l urls.txt -severity critical,high -silent -o vulns.txt
+          else
+             touch vulns.txt
+          fi
 
           # E. Visual Recon
           echo "📸 Taking Screenshots..."
@@ -63,11 +76,9 @@ jobs:
           echo "LIVE_COUNT=$(wc -l < urls.txt || echo 0)" >> $GITHUB_ENV
           echo "VULN_COUNT=$(wc -l < vulns.txt || echo 0)" >> $GITHUB_ENV
 
-      # 3. Zip Everything
       - name: Zip Results
         run: zip -r report.zip screenshots/ live_full.txt vulns.txt
 
-      # 4. Send Intelligence Report
       - name: Send to Telegram
         uses: appleboy/telegram-action@master
         with:
