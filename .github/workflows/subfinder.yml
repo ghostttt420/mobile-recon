@@ -1,0 +1,46 @@
+name: Live Subdomain Hunter
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Target Domain (e.g., tesla.com)'
+        required: true
+        default: 'example.com'
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      # Install BOTH tools
+      - name: Install Tools
+        run: |
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+
+      # Run the Pipeline: Subfinder -> Httpx
+      # We use -silent so only the clean data passes through
+      # -title shows the website title
+      # -sc shows the status code (200 OK, 403 Forbidden, etc.)
+      - name: Run Hunt & Check Live
+        run: |
+          echo "Hunting live sites on ${{ inputs.domain }}..."
+          subfinder -d ${{ inputs.domain }} -silent | httpx -title -status-code -o live_results.txt
+          
+      # Display the clean results in your logs
+      - name: 👀 VIEW LIVE SITES HERE
+        run: cat live_results.txt
+
+      # Save the file for download
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.domain }}-live-sites
+          path: live_results.txt
