@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -26,20 +27,21 @@ jobs:
 
       - name: Map and Screenshot
         run: |
-          # 1. Find subdomains
-          # 2. Filter for live ones
-          # 3. Take screenshots of the hits
+          # Create folder first to avoid zip errors later
+          mkdir -p screenshots
           subfinder -d ${{ inputs.domain }} -silent > subs.txt
           cat subs.txt | httpx -silent -mc 200,401,404 > live.txt
+          # Using live.txt for gowitness
           gowitness scan file -f live.txt --write-db
-          
-      - name: Upload Screenshots
+
+      - name: Upload Screenshots Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.domain }}-screenshots
           path: ./screenshots/
-            - name: Zip Screenshots
-        run: zip -r screenshots.zip ./screenshots/
+
+      - name: Zip Screenshots
+        run: zip -r screenshots.zip ./screenshots/ live.txt
 
       - name: Send to Telegram
         uses: appleboy/telegram-action@master
@@ -50,8 +52,6 @@ jobs:
           message: |
             ✅ *Scan Complete!*
             *Target:* ${{ inputs.domain }}
-            *Status:* Found $(wc -l < live_results.txt) live subdomains.
-            _Attached: Screenshots and logs._
+            *Status:* Found $(wc -l < live.txt) live subdomains.
+            _Attached: Screenshots and live site list._
           format: markdown
-
-
